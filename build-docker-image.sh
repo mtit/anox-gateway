@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 set -eu
 
-docker build -t mtit/anox-gateway:latest .
+docker build --build-arg GOPROXY=https://goproxy.cn,direct -t mtit/anox-gateway:latest .
