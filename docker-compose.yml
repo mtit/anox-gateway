@@ -1,0 +1,11 @@
+services:
+  anox-gateway:
+    build: .
+    image: mtit/anox-gateway:latest
+    restart: unless-stopped
+    environment:
+      ANOX_URL: 127.0.0.1:8848
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: 8080
+    ports:
+      - "8080:8080"
