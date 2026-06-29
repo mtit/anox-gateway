@@ -3,9 +3,11 @@ package main
 import (
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"strings"
+	"time"
 )
 
 type HTTPServer struct {
@@ -53,6 +55,7 @@ func (s *HTTPServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		originalDirector(req)
 		req.URL.Path = targetPath
 		req.Host = req.URL.Host
+		setForwardHeaders(req, r, s.cfg.JWTSecret)
 		req.Header.Set("X-Anox-Gateway", "anox-gateway")
 		req.Header.Set("X-Anox-Service", service)
 		req.Header.Set("X-Anox-Instance", instance.ID)
@@ -62,6 +65,44 @@ func (s *HTTPServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "bad gateway", http.StatusBadGateway)
 	}
 	proxy.ServeHTTP(w, r)
+}
+
+func setForwardHeaders(req, original *http.Request, jwtSecret string) {
+	clientIP := realClientIP(original)
+	if clientIP != "" {
+		req.Header.Set("X-Real-IP", clientIP)
+	}
+
+	req.Header.Set("X-Forwarded-Host", original.Host)
+	req.Header.Set("X-Forwarded-Proto", forwardedProto(original))
+	req.Header.Set("X-User-ID", userIDFromAuthorization(original.Header.Get("Authorization"), jwtSecret, time.Now()))
+}
+
+func realClientIP(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("X-Real-IP")); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); value != "" {
+		if first, _, ok := strings.Cut(value, ","); ok {
+			return strings.TrimSpace(first)
+		}
+		return value
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func forwardedProto(r *http.Request) string {
+	if value := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); value != "" {
+		return value
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	return "http"
 }
 
 func splitServicePath(path string) (service, target string, ok bool) {

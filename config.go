@@ -7,20 +7,23 @@ import (
 )
 
 type Config struct {
-	AnoxURL  string
-	HTTPHost string
-	HTTPPort string
+	AnoxURL   string
+	HTTPHost  string
+	HTTPPort  string
+	JWTSecret string
 }
 
 func LoadConfig() Config {
 	cfg := Config{
-		AnoxURL:  getEnv("ANOX_URL", "127.0.0.1:8848"),
-		HTTPHost: getEnv("HTTP_HOST", "0.0.0.0"),
-		HTTPPort: getEnv("HTTP_PORT", "8080"),
+		AnoxURL:   getEnv("ANOX_URL", "127.0.0.1:8848"),
+		HTTPHost:  getEnv("HTTP_HOST", "0.0.0.0"),
+		HTTPPort:  getEnv("HTTP_PORT", "8080"),
+		JWTSecret: getEnv("JWT_SECRET", ""),
 	}
 	cfg.AnoxURL = strings.TrimSpace(cfg.AnoxURL)
 	cfg.HTTPHost = strings.TrimSpace(cfg.HTTPHost)
 	cfg.HTTPPort = strings.TrimSpace(cfg.HTTPPort)
+	cfg.JWTSecret = strings.TrimSpace(cfg.JWTSecret)
 	return cfg
 }
 

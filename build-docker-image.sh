@@ -23,5 +23,6 @@ docker run -d \
   -e ANOX_URL=anox-server:8848 \
   -e HTTP_HOST=0.0.0.0 \
   -e HTTP_PORT=8080 \
+  -e JWT_SECRET=change-me \
   mtit/anox-gateway:latest
 EXAMPLE
