@@ -25,61 +25,72 @@ type jwtClaims struct {
 }
 
 func userIDFromAuthorization(authHeader, secret string, now time.Time) string {
+	userID, _ := userIDFromAuthorizationWithReason(authHeader, secret, now)
+	return userID
+}
+
+func userIDFromAuthorizationWithReason(authHeader, secret string, now time.Time) (string, string) {
 	if secret == "" {
-		return anonymousUserID
+		return anonymousUserID, "empty secret"
 	}
 
 	token := strings.TrimSpace(authHeader)
 	token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
 	if token == "" {
-		return anonymousUserID
+		return anonymousUserID, "missing token"
 	}
 
-	userID, ok := verifyJWT(token, secret, now)
+	userID, reason, ok := verifyJWT(token, secret, now)
 	if !ok {
-		return anonymousUserID
+		return anonymousUserID, reason
 	}
-	return userID
+	return userID, ""
 }
 
-func verifyJWT(token, secret string, now time.Time) (string, bool) {
+func verifyJWT(token, secret string, now time.Time) (string, string, bool) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return "", false
+		return "", "invalid token format", false
 	}
 
 	var header jwtHeader
 	if err := decodeJWTPart(parts[0], &header); err != nil {
-		return "", false
+		return "", "invalid jwt header", false
 	}
 	if header.Algorithm != "HS256" {
-		return "", false
+		return "", "unsupported jwt alg", false
 	}
 
 	signingInput := parts[0] + "." + parts[1]
 	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
-		return "", false
+		return "", "invalid jwt signature encoding", false
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(signingInput))
 	if !hmac.Equal(signature, mac.Sum(nil)) {
-		return "", false
+		return "", "signature mismatch", false
 	}
 
 	var claims jwtClaims
 	if err := decodeJWTPart(parts[1], &claims); err != nil {
-		return "", false
+		return "", "invalid jwt claims", false
 	}
-	if claims.IssuedAt <= 0 || claims.ExpiresAt <= now.Unix() || claims.IssuedAt > now.Add(time.Minute).Unix() {
-		return "", false
+	if claims.IssuedAt <= 0 {
+		return "", "missing iat", false
+	}
+	if claims.ExpiresAt <= now.Unix() {
+		return "", "expired token", false
+	}
+	if claims.IssuedAt > now.Add(time.Minute).Unix() {
+		return "", "iat in future", false
 	}
 
 	userID := formatUserID(claims.UserID)
 	if userID == "" {
-		return "", false
+		return "", "missing user_id", false
 	}
-	return userID, true
+	return userID, "", true
 }
 
 func decodeJWTPart(part string, dst any) error {

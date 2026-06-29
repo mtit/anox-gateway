@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -54,13 +55,22 @@ type AuthState struct {
 	mu            sync.RWMutex
 	fallback      string
 	globalSecret  string
-	anoxSecret    string
 	currentSecret string
+	ready         chan struct{}
+	readyOnce     sync.Once
 }
 
 func NewAuthState(fallback string) *AuthState {
 	fallback = strings.TrimSpace(fallback)
-	return &AuthState{fallback: fallback, currentSecret: fallback}
+	auth := &AuthState{
+		fallback:      fallback,
+		currentSecret: fallback,
+		ready:         make(chan struct{}),
+	}
+	if fallback != "" {
+		auth.readyOnce.Do(func() { close(auth.ready) })
+	}
+	return auth
 }
 
 func (a *AuthState) Secret() string {
@@ -69,23 +79,42 @@ func (a *AuthState) Secret() string {
 	return a.currentSecret
 }
 
-func (a *AuthState) UpdateConfig(service string, values map[string]string) {
-	secret := strings.TrimSpace(values["jwt_secret"])
-	if secret == "" {
-		secret = strings.TrimSpace(values["secret"])
+func (a *AuthState) Source() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.globalSecret != "" {
+		return "_global.jwt_secret"
 	}
+	if a.fallback != "" {
+		return "JWT_SECRET"
+	}
+	return ""
+}
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	switch service {
-	case "_global":
-		a.globalSecret = secret
-	case "anox":
-		a.anoxSecret = secret
-	default:
+func (a *AuthState) UpdateConfig(service string, values map[string]string) {
+	if service != "_global" {
 		return
 	}
-	a.currentSecret = firstNonEmpty(a.globalSecret, a.anoxSecret, a.fallback)
+	secret := strings.TrimSpace(values["jwt_secret"])
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.globalSecret = secret
+	a.currentSecret = firstNonEmpty(a.globalSecret, a.fallback)
+	if a.currentSecret != "" {
+		a.readyOnce.Do(func() { close(a.ready) })
+	}
+}
+
+func (a *AuthState) Wait(ctx context.Context) error {
+	if a.Secret() != "" {
+		return nil
+	}
+	select {
+	case <-a.ready:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("missing jwt secret from anox config: %w", ctx.Err())
+	}
 }
 
 func firstNonEmpty(values ...string) string {

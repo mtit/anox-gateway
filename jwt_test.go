@@ -27,7 +27,7 @@ func TestVerifyJWTRejectsUnsupportedAlgorithm(t *testing.T) {
 	now := time.Unix(1700000000, 0)
 	token := testJWT(t, `{"alg":"HS384","typ":"JWT"}`, `{"user_id":"u1","iat":1700000000,"exp":1700003600}`, "secret")
 
-	if _, ok := verifyJWT(token, "secret", now); ok {
+	if _, _, ok := verifyJWT(token, "secret", now); ok {
 		t.Fatal("expected unsupported algorithm to be rejected")
 	}
 }

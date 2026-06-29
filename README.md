@@ -7,7 +7,8 @@ Anox gateway subscribes to `anox-server` service-registry updates over WebSocket
 - `ANOX_URL`: anox-server address, default `127.0.0.1:8848`
 - `HTTP_HOST`: listen host, default `0.0.0.0`
 - `HTTP_PORT`: listen port, default `8080`
-- `JWT_SECRET`: fallback HS256 JWT signing secret. Gateway prefers `jwt_secret` or `secret` from Anox `_global` config, then `anox` config, and uses this environment value only when neither config contains a secret.
+
+Gateway reads the HS256 JWT signing secret from anox-server config during startup. Configure `jwt_secret` in `_global`. `JWT_SECRET` is only an emergency local fallback and is not required for normal startup.
 
 ## Routing
 

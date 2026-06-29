@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"sync"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+const initialAuthConfigTimeout = 5 * time.Second
 
 type Watcher struct {
 	cfg      Config
@@ -28,6 +31,13 @@ func (w *Watcher) Start() error {
 	}
 	log.Printf("[Gateway] watcher connected to %s", w.cfg.WebSocketURL())
 	go w.readLoop()
+	ctx, cancel := context.WithTimeout(context.Background(), initialAuthConfigTimeout)
+	defer cancel()
+	if err := w.auth.Wait(ctx); err != nil {
+		w.Close()
+		return err
+	}
+	log.Printf("[Gateway] auth config loaded from %s", w.auth.Source())
 	return nil
 }
 
@@ -51,10 +61,6 @@ func (w *Watcher) connect() error {
 		return err
 	}
 	if err := conn.WriteJSON(map[string]string{"type": "pull_config", "service": "_global"}); err != nil {
-		conn.Close()
-		return err
-	}
-	if err := conn.WriteJSON(map[string]string{"type": "pull_config", "service": "anox"}); err != nil {
 		conn.Close()
 		return err
 	}
@@ -125,7 +131,7 @@ func (w *Watcher) handleMessage(payload []byte) {
 			log.Printf("[Gateway] invalid config update: %v", err)
 			return
 		}
-		if msg.Service == "_global" || msg.Service == "anox" {
+		if msg.Service == "_global" {
 			w.pullConfig(msg.Service)
 		}
 	case "config_response":

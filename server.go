@@ -76,7 +76,11 @@ func setForwardHeaders(req, original *http.Request, jwtSecret string) {
 
 	req.Header.Set("X-Forwarded-Host", original.Host)
 	req.Header.Set("X-Forwarded-Proto", forwardedProto(original))
-	req.Header.Set("X-User-ID", userIDFromAuthorization(original.Header.Get("Authorization"), jwtSecret, time.Now()))
+	userID, reason := userIDFromAuthorizationWithReason(original.Header.Get("Authorization"), jwtSecret, time.Now())
+	if userID == anonymousUserID && strings.TrimSpace(original.Header.Get("Authorization")) != "" {
+		log.Printf("[Gateway] JWT verification failed: %s", reason)
+	}
+	req.Header.Set("X-User-ID", userID)
 }
 
 func realClientIP(r *http.Request) string {
