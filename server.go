@@ -13,10 +13,11 @@ import (
 type HTTPServer struct {
 	cfg      Config
 	registry *RegistryState
+	auth     *AuthState
 }
 
-func NewHTTPServer(cfg Config, registry *RegistryState) *HTTPServer {
-	return &HTTPServer{cfg: cfg, registry: registry}
+func NewHTTPServer(cfg Config, registry *RegistryState, auth *AuthState) *HTTPServer {
+	return &HTTPServer{cfg: cfg, registry: registry, auth: auth}
 }
 
 func (s *HTTPServer) Handler() http.Handler {
@@ -55,7 +56,7 @@ func (s *HTTPServer) handleProxy(w http.ResponseWriter, r *http.Request) {
 		originalDirector(req)
 		req.URL.Path = targetPath
 		req.Host = req.URL.Host
-		setForwardHeaders(req, r, s.cfg.JWTSecret)
+		setForwardHeaders(req, r, s.auth.Secret())
 		req.Header.Set("X-Anox-Gateway", "anox-gateway")
 		req.Header.Set("X-Anox-Service", service)
 		req.Header.Set("X-Anox-Instance", instance.ID)

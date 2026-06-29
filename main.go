@@ -8,14 +8,15 @@ import (
 func main() {
 	cfg := LoadConfig()
 	registry := NewRegistryState()
-	watcher := NewWatcher(cfg, registry)
+	auth := NewAuthState(cfg.JWTSecret)
+	watcher := NewWatcher(cfg, registry, auth)
 
 	if err := watcher.Start(); err != nil {
 		log.Fatalf("[Gateway] failed to start watcher: %v", err)
 	}
 	defer watcher.Close()
 
-	server := NewHTTPServer(cfg, registry)
+	server := NewHTTPServer(cfg, registry, auth)
 	addr := cfg.ListenAddress()
 	log.Printf("[Gateway] listening on %s, anox=%s", addr, cfg.AnoxURL)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {

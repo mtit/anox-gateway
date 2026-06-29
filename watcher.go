@@ -12,13 +12,14 @@ import (
 type Watcher struct {
 	cfg      Config
 	registry *RegistryState
+	auth     *AuthState
 	conn     *websocket.Conn
 	mu       sync.Mutex
 	closed   bool
 }
 
-func NewWatcher(cfg Config, registry *RegistryState) *Watcher {
-	return &Watcher{cfg: cfg, registry: registry}
+func NewWatcher(cfg Config, registry *RegistryState, auth *AuthState) *Watcher {
+	return &Watcher{cfg: cfg, registry: registry, auth: auth}
 }
 
 func (w *Watcher) Start() error {
@@ -46,6 +47,14 @@ func (w *Watcher) connect() error {
 		return err
 	}
 	if err := conn.WriteJSON(map[string]string{"type": "watch_services"}); err != nil {
+		conn.Close()
+		return err
+	}
+	if err := conn.WriteJSON(map[string]string{"type": "pull_config", "service": "_global"}); err != nil {
+		conn.Close()
+		return err
+	}
+	if err := conn.WriteJSON(map[string]string{"type": "pull_config", "service": "anox"}); err != nil {
 		conn.Close()
 		return err
 	}
@@ -86,7 +95,9 @@ func (w *Watcher) readLoop() {
 }
 
 func (w *Watcher) handleMessage(payload []byte) {
-	var envelope struct{ Type string `json:"type"` }
+	var envelope struct {
+		Type string `json:"type"`
+	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		log.Printf("[Gateway] invalid watcher message: %v", err)
 		return
@@ -106,6 +117,38 @@ func (w *Watcher) handleMessage(payload []byte) {
 			return
 		}
 		w.registry.ApplyEvent(msg)
+	case "config_update":
+		var msg struct {
+			Service string `json:"service"`
+		}
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			log.Printf("[Gateway] invalid config update: %v", err)
+			return
+		}
+		if msg.Service == "_global" || msg.Service == "anox" {
+			w.pullConfig(msg.Service)
+		}
+	case "config_response":
+		var msg struct {
+			Service string            `json:"service"`
+			Values  map[string]string `json:"values"`
+		}
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			log.Printf("[Gateway] invalid config response: %v", err)
+			return
+		}
+		w.auth.UpdateConfig(msg.Service, msg.Values)
+		log.Printf("[Gateway] auth config updated from %s", msg.Service)
+	}
+}
+
+func (w *Watcher) pullConfig(service string) {
+	conn := w.currentConn()
+	if conn == nil {
+		return
+	}
+	if err := conn.WriteJSON(map[string]string{"type": "pull_config", "service": service}); err != nil {
+		log.Printf("[Gateway] failed to pull config %s: %v", service, err)
 	}
 }
 

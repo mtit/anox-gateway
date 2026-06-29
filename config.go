@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 )
 
 type Config struct {
@@ -47,4 +48,51 @@ func netJoinHostPort(host, port string) string {
 		return fmt.Sprintf("[%s]:%s", host, port)
 	}
 	return fmt.Sprintf("%s:%s", host, port)
+}
+
+type AuthState struct {
+	mu            sync.RWMutex
+	fallback      string
+	globalSecret  string
+	anoxSecret    string
+	currentSecret string
+}
+
+func NewAuthState(fallback string) *AuthState {
+	fallback = strings.TrimSpace(fallback)
+	return &AuthState{fallback: fallback, currentSecret: fallback}
+}
+
+func (a *AuthState) Secret() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.currentSecret
+}
+
+func (a *AuthState) UpdateConfig(service string, values map[string]string) {
+	secret := strings.TrimSpace(values["jwt_secret"])
+	if secret == "" {
+		secret = strings.TrimSpace(values["secret"])
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch service {
+	case "_global":
+		a.globalSecret = secret
+	case "anox":
+		a.anoxSecret = secret
+	default:
+		return
+	}
+	a.currentSecret = firstNonEmpty(a.globalSecret, a.anoxSecret, a.fallback)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
